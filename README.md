@@ -19,7 +19,8 @@ dotnet run --project src/Cli
 
 RID
 
-**win-x64 78MB
-**linux-x64 80MB
+**win-x64** 78MB
+
+**linux-x64** 80MB
 
 Публікація для win-x64 виявилася на 2 MB меншою, ніж для linux-x64.
