@@ -1,5 +1,9 @@
 ﻿using System.Runtime.InteropServices;
 using System.Text.Json;
+using System;
+using System.Text;
+
+Console.OutputEncoding = Encoding.UTF8;
 
 var info = new
 {
