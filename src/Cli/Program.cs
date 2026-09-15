@@ -1,5 +1,7 @@
 ﻿using Core;
 
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+
 EnvironmentReport report = EnvironmentInfo.Collect();
 Console.WriteLine("CrossApp – інформація про середовище");
 Console.WriteLine(new string('-', 52));

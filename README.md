@@ -11,18 +11,65 @@
 ## Середовище
 .NET SDK 10.0.400 Windows 11 x64 (win-x64) Ubuntu 24.04.4
 
-## Структура Solution та плани на семестр
+## Структура solution
+
+```
 CrossApp/
-├── src/
-│   ├── Core/         # Спільна логіка проєкту   
-│   └── Cli/          # Консольний інтерфейс
+  CrossApp.slnx
+  README.md
+  .gitignore
+  src/
+    Core/
+      Core.csproj
+      EnvironmentInfo.cs
+    Cli/
+      Cli.csproj
+      Program.cs
+```
+`Core` — class library (немає точки входу, результат збірки — `Core.dll`).
+`Cli` — консольний застосунок, має `ProjectReference` на `Core`.
+Залежність одностороння: `Cli → Core`. `Core` ніколи не посилається на `Cli`.
 
 
-## Команди
-- **Збірка:** `dotnet build`
-- **Запуск:** `dotnet run --project src/Cli`
-- **Публікація (Self-contained):** `dotnet publish src/Cli -c Release -r win-x64 --self-contained true`
-- **Публікація (Framework-dependent):** `dotnet publish src/Cli -c Release -r win-x64 --self-contained false`
+### Збірка
+```bash
+dotnet build
+dotnet build src/Core/Core.csproj
+```
+
+### Запуск
+```bash
+dotnet run --project src/Cli
+```
+
+### Multi-targeting (Крок 5)
+У `src/Core/Core.csproj`: `<TargetFrameworks>net8.0;net10.0</TargetFrameworks>`
+```bash
+dotnet build
+```
+### Публікація (Крок 6)
+```bash
+dotnet publish src/Cli -c Release -r win-x64 --self-contained true
+dotnet publish src/Cli -c Release -r win-x64 --self-contained false
+dotnet publish src/Cli -c Release -r linux-x64 --self-contained true
+dotnet publish src/Cli -c Release -r linux-x64 --self-contained false
+```
+
+Вимірювання розміру:
+```powershell
+(Get-ChildItem -Recurse src\Cli\bin\Release\net10.0\win-x64\publish | Measure-Object Length -Sum).Sum / 1MB
+```
+
+### Запуск з publish (Крок 7)
+```powershell
+cd src\Cli\bin\Release\net10.0\win-x64\publish
+.\Cli.exe
+```
+### Додаткове завдання
+```bash
+dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishTrimmed=true
+```
 
 ## Порівняння режимів публікації
 
