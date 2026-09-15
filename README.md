@@ -79,3 +79,18 @@ dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishTri
 | win-x64   | framework-dependent  | ~0.2 МБ        | так (.NET 10)    |
 | linux-x64 | self-contained       | ~78.8 МБ       | ні               |
 | linux-x64 | framework-dependent  | ~0.11 МБ       | так (.NET 10)    
+
+## Плани щодо доменної моделі
+
+Цього тижня `Core` містить лише допоміжний код (`EnvironmentInfo`), доменна логіка
+ще не додається. Каталоги нижче зарезервовані під конкретні типи, що з'являться
+в наступних лабораторних:
+
+- **`Core/Dto/`** (тиждень 3) — record-типи для передачі даних:
+  `CustomerDto`, `ProductDto`, `OrderDto`, `OrderLineDto`
+- **`Core/Domain/`** (тиждень 4) — сутності з поведінкою та інваріантами:
+  `Customer` (клієнт), `Product` (товар), `Order` (замовлення), `OrderLine` (рядок
+  замовлення) — з логікою підрахунку сум і перевіркою правил (наприклад, кількість
+  у `OrderLine` не може бути від'ємною)
+- **`Core/Storage/`** (тиждень 5) — реалізації сховищ для збереження/пошуку
+  замовлень і клієнтів
