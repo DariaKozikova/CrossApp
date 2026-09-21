@@ -1,14 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Core\Core.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+<ItemGroup>
+  <None Include="..\..\data\sample.csv" Link="data\sample.csv" CopyToOutputDirectory="PreserveNewest" />
+  <None Include="..\..\data\sample.json" Link="data\sample.json" CopyToOutputDirectory="PreserveNewest" />
+  <None Include="..\..\data\sample_mixed.csv" Link="data\sample_mixed.csv" CopyToOutputDirectory="PreserveNewest" />
+</ItemGroup>
 
 </Project>

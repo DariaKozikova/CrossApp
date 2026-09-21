@@ -14,18 +14,39 @@
 ## Структура solution
 
 ```
+## Структура проєкту
+
+```text
 CrossApp/
-  CrossApp.slnx
-  README.md
-  .gitignore
-  src/
-    Core/
-      Core.csproj
-      EnvironmentInfo.cs
-    Cli/
-      Cli.csproj
-      Program.cs
+├── CrossApp.slnx
+├── README.md
+├── .gitignore
+│
+├── data/
+│   ├── sample.csv
+│   ├── sample.json
+│   └── sample_mixed.csv
+│
+└── src/
+    ├── Core/
+    │   ├── Core.csproj
+    │   │
+    │   ├── Dto/
+    │   │   ├── ProductDto.cs
+    │   │   ├── CustomerDto.cs
+    │   │   ├── OrderDto.cs
+    │   │   └── ImportResult.cs
+    │   │
+    │   └── Import/
+    │       ├── ProductCsvImporter.cs
+    │       ├── ProductJsonImporter.cs
+    │       └── MixedImporter.cs
+    │
+    └── Cli/
+        ├── Cli.csproj
+        └── Program.cs
 ```
+
 `Core` — class library (немає точки входу, результат збірки — `Core.dll`).
 `Cli` — консольний застосунок, має `ProjectReference` на `Core`.
 Залежність одностороння: `Cli → Core`. `Core` ніколи не посилається на `Cli`.
@@ -35,40 +56,36 @@ CrossApp/
 ```bash
 dotnet build
 dotnet build src/Core/Core.csproj
-```
-
-### Запуск
-```bash
 dotnet run --project src/Cli
 ```
 
-### Multi-targeting (Крок 5)
-У `src/Core/Core.csproj`: `<TargetFrameworks>net8.0;net10.0</TargetFrameworks>`
+### Запуск із файлом за замовчуванням:
+
 ```bash
-dotnet build
+dotnet run --project src/Cli
 ```
-### Публікація (Крок 6)
+Використовується: data/sample.csv
+
+### Запуск із власним шляхом:
+
 ```bash
-dotnet publish src/Cli -c Release -r win-x64 --self-contained true
-dotnet publish src/Cli -c Release -r win-x64 --self-contained false
-dotnet publish src/Cli -c Release -r linux-x64 --self-contained true
-dotnet publish src/Cli -c Release -r linux-x64 --self-contained false
+dotnet run --project src/Cli -- data/sample.csv
 ```
 
-Вимірювання розміру:
-```powershell
-(Get-ChildItem -Recurse src\Cli\bin\Release\net10.0\win-x64\publish | Measure-Object Length -Sum).Sum / 1MB
+### JSON
+
+```bash
+dotnet run --project src/Cli -- data/sample.json
 ```
 
-### Запуск з publish (Крок 7)
-```powershell
-cd src\Cli\bin\Release\net10.0\win-x64\publish
-.\Cli.exe
-```
-### Додаткове завдання
+### Різнорідний CSV
 ```bash
-dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
-dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishTrimmed=true
+dotnet run --project src/Cli -- data/sample_mixed.csv
+```
+
+###  Перевірка неіснуючого файлу
+```bash
+dotnet run --project src/Cli -- data/does-not-exist.csv
 ```
 
 ## Порівняння режимів публікації
@@ -82,9 +99,6 @@ dotnet publish src/Cli -c Release -r win-x64 --self-contained true -p:PublishTri
 
 ## Плани щодо доменної моделі
 
-Цього тижня `Core` містить лише допоміжний код (`EnvironmentInfo`), доменна логіка
-ще не додається. Каталоги нижче зарезервовані під конкретні типи, що з'являться
-в наступних лабораторних:
 
 - **`Core/Dto/`** (тиждень 3) — record-типи для передачі даних:
   `CustomerDto`, `ProductDto`, `OrderDto`, `OrderLineDto`
