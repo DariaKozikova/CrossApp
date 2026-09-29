@@ -33,7 +33,6 @@ public static class ProductJsonImporter
             return new ImportResult<ProductDto>(new List<ProductDto>(), errors);
         }
 
-        // Проста валідація вже розібраних об'єктів (аналогічно CSV-парсеру)
         var valid = new List<ProductDto>();
         for (int i = 0; i < items.Count; i++)
         {

@@ -37,6 +37,14 @@ CrossApp/
     │   │   ├── OrderDto.cs
     │   │   └── ImportResult.cs
     │   │
+    │   ├── Domain/
+    │   │   ├── Customer.cs
+    │   │   ├── DomainMapper.cs
+    │   │   ├── Order.cs
+    │   │   ├── OrderLine.cs
+    │   │   ├── OrderService.cs
+    │   │   └── OrderStatus.cs
+    │   │
     │   └── Import/
     │       ├── ProductCsvImporter.cs
     │       ├── ProductJsonImporter.cs
@@ -104,7 +112,14 @@ dotnet run --project src/Cli -- data/does-not-exist.csv
   `CustomerDto`, `ProductDto`, `OrderDto`, `OrderLineDto`
 - **`Core/Domain/`** (тиждень 4) — сутності з поведінкою та інваріантами:
   `Customer` (клієнт), `Product` (товар), `Order` (замовлення), `OrderLine` (рядок
-  замовлення) — з логікою підрахунку сум і перевіркою правил (наприклад, кількість
-  у `OrderLine` не може бути від'ємною)
+  замовлення) — з логікою підрахунку сум і перевіркою правил.
 - **`Core/Storage/`** (тиждень 5) — реалізації сховищ для збереження/пошуку
   замовлень і клієнтів
+
+## Інваріанти доменної моделі (Лабораторна 4)
+
+Сутність **Order**:
+1. Ідентифікатор замовлення та клієнта не можуть бути порожніми (`ArgumentException`).
+2. Не можна додати рядок з від'ємною ціною або від'ємною/нульовою кількістю (`ArgumentOutOfRangeException`).
+3. Не можна змінювати замовлення (додавати рядки) після його підтвердження (`InvalidOperationException`).
+4. Не можна підтвердити порожнє замовлення без рядків (`InvalidOperationException`).

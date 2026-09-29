@@ -1,11 +1,14 @@
 using System.Globalization;
+using Core.Domain;
 using Core.Dto;
 
 namespace Core.Import;
+
 public sealed record MixedImportResult(
     ImportResult<ProductDto> Products,
     ImportResult<CustomerDto> Customers,
     ImportResult<OrderDto> Orders);
+
 public static class MixedImporter
 {
     private const char Separator = ';';
@@ -53,12 +56,17 @@ public static class MixedImporter
                     break;
 
                 case ["O", var id, var customerId, var productId, var quantity]
-                    when !int.TryParse(quantity, out int q) || q <= 0:
+                    when !int.TryParse(quantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out int q) || q <= 0:
                     orderErrors.Add($"рядок {number}: кількість '{quantity}' некоректна");
                     break;
 
                 case ["O", var id, var customerId, var productId, var quantity]:
-                    orders.Add(new OrderDto(id, customerId, productId, int.Parse(quantity)));
+                    orders.Add(new OrderDto(
+                        id,
+                        customerId,
+                        [new OrderLineDto(productId, "Unknown", 0m,
+                            int.Parse(quantity, NumberStyles.Integer, CultureInfo.InvariantCulture))],
+                        nameof(OrderStatus.Draft)));
                     break;
 
                 case [var prefix, ..]:

@@ -1,61 +1,46 @@
-﻿using Core.Dto;
-using Core.Import;
+﻿using Core.Domain;
+using Core.Dto;
 
-string path = args.Length > 0 ? args[0] : Path.Combine("data", "sample.csv");
+Console.WriteLine("=== Сценарій 1: успіх ===");
+Order order = Order.Create("ORD-001", "CUST-99");
+order.AddLine("P-1", "Ноутбук", 25000m, 1);
+order.AddLine("P-2", "Миша", 500m, 2);
+Console.WriteLine(order);
+order.Confirm();
+Console.WriteLine(order);
 
-if (!File.Exists(path))
+Console.WriteLine("\n=== Сценарій 2: порушення інваріантів ===");
+Order draft = Order.Create("ORD-002", "CUST-99");
+TryDo("порожній ID замовлення", () => Order.Create(" ", "CUST-99"));
+TryDo("від'ємна кількість", () => draft.AddLine("P-3", "Клавіатура", 1000m, -5));
+TryDo("рядок до підтвердженого замовлення", () => order.AddLine("P-3", "Клавіатура", 1000m, 1));
+TryDo("підтвердження порожнього замовлення", () => draft.Confirm());
+Console.WriteLine($" Стан після відмов: {draft}");
+
+Console.WriteLine("\n=== Додаткові завдання ===");
+Order cancelled = Order.Create("ORD-003", "CUST-99");
+cancelled.Cancel();
+TryDo("повторне скасування (enum + switch)", () => cancelled.Cancel());
+
+Customer customer = Customer.Create("C-1", "Іван");
+var open = Enumerable.Range(1, 5).Select(i => Order.Create($"O-{i}", "C-1")).ToList();
+TryDo("ліміт відкритих замовлень (сервіс)", () => new OrderService().CreateOrder(customer, open, "O-NEW"));
+
+var badDto = new OrderDto("ORD-BAD", "CUST-99", [new OrderLineDto("P-1", "Товар", 10m, -3)], "Draft");
+var mapped = DomainMapper.MapOrders(new ImportResult<OrderDto>([order.ToDto(), badDto], []));
+Console.WriteLine($" Імпорт: коректних {mapped.Items.Count}, помилок {mapped.Errors.Count}");
+foreach (var error in mapped.Errors)
+    Console.WriteLine($"   - {error}");
+
+static void TryDo(string title, Action action)
 {
-    Console.WriteLine($"Файл не знайдено: {Path.GetFullPath(path)}");
-    return 1;
-}
-
-if (path.EndsWith("_mixed.csv"))
-{
-    MixedImportResult mixed = MixedImporter.Load(path);
-    Console.WriteLine($"Товари: {mixed.Products.Items.Count}, помилок: {mixed.Products.Errors.Count}");
-    foreach (string e in mixed.Products.Errors)
-        Console.WriteLine($"  ! {e}");
-
-    Console.WriteLine($"Клієнти: {mixed.Customers.Items.Count}, помилок: {mixed.Customers.Errors.Count}");
-    foreach (string e in mixed.Customers.Errors)
-        Console.WriteLine($"  ! {e}");
-
-    Console.WriteLine($"Замовлення: {mixed.Orders.Items.Count}, помилок: {mixed.Orders.Errors.Count}");
-    foreach (string e in mixed.Orders.Errors)
-        Console.WriteLine($"  ! {e}");
-
-    return 0;
-}
-
-ImportResult<ProductDto> result = Path.GetExtension(path).ToLowerInvariant() switch
-{
-    ".csv" => ProductCsvImporter.Load(path),
-    ".json" => ProductJsonImporter.Load(path),
-    var ext => throw new NotSupportedException($"формат '{ext}' не підтримується")
-};
-
-Console.WriteLine($"Завантажено записів: {result.Items.Count}");
-
-foreach (ProductDto p in result.Items.Take(5))
-    Console.WriteLine($"  {p.Id,-6} {p.Name,-30} {p.Price,10:F2}");
-
-if (result.Errors.Count > 0)
-{
-    Console.WriteLine($"Пропущено рядків: {result.Errors.Count}");
-    foreach (string e in result.Errors)
-        Console.WriteLine($"  ! {e}");
-}
-
-PrintStats(result);
-
-return 0;
-
-static void PrintStats(ImportResult<ProductDto> result)
-{
-    int total = result.Items.Count + result.Errors.Count;
-    double errorRate = total == 0 ? 0 : (double)result.Errors.Count / total * 100;
-
-    Console.WriteLine(
-        $"Статистика: усього {total}, прийнято {result.Items.Count}, " +
-        $"пропущено {result.Errors.Count}, помилок {errorRate:F1}%");
+    try
+    {
+        action();
+        Console.WriteLine($" {title}: виняток НЕ спрацював — інваріант відсутній!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($" {title}: {ex.GetType().Name} — {ex.Message}");
+    }
 }
