@@ -25,16 +25,22 @@ CrossApp/
 ├── data/
 │   ├── sample.csv
 │   ├── sample.json
-│   └── sample_mixed.csv
+│   ├── sample_mixed.csv
+│   └── orders.json
 │
 └── src/
     ├── Core/
     │   ├── Core.csproj
+    │   ├── SampleData.cs
+    │   │
+    │   ├── Abstractions/
+    │   │   └── IOrderStore.cs
     │   │
     │   ├── Dto/
     │   │   ├── ProductDto.cs
     │   │   ├── CustomerDto.cs
     │   │   ├── OrderDto.cs
+    │   │   ├── OrderLineDto.cs
     │   │   └── ImportResult.cs
     │   │
     │   ├── Domain/
@@ -42,8 +48,16 @@ CrossApp/
     │   │   ├── DomainMapper.cs
     │   │   ├── Order.cs
     │   │   ├── OrderLine.cs
-    │   │   ├── OrderService.cs
     │   │   └── OrderStatus.cs
+    │   │
+    │   ├── Storage/
+    │   │   ├── InMemoryOrderStore.cs
+    │   │   ├── FileOrderStore.cs
+    │   │   ├── CachingOrderStore.cs
+    │   │   └── StoreFactory.cs
+    │   │
+    │   ├── Services/
+    │   │   └── OrderService.cs
     │   │
     │   └── Import/
     │       ├── ProductCsvImporter.cs
@@ -116,10 +130,43 @@ dotnet run --project src/Cli -- data/does-not-exist.csv
 - **`Core/Storage/`** (тиждень 5) — реалізації сховищ для збереження/пошуку
   замовлень і клієнтів
 
-## Інваріанти доменної моделі (Лабораторна 4)
+## Сервісний шар та сховища (Лабораторна 5)
 
-Сутність **Order**:
-1. Ідентифікатор замовлення та клієнта не можуть бути порожніми (`ArgumentException`).
-2. Не можна додати рядок з від'ємною ціною або від'ємною/нульовою кількістю (`ArgumentOutOfRangeException`).
-3. Не можна змінювати замовлення (додавати рядки) після його підтвердження (`InvalidOperationException`).
-4. Не можна підтвердити порожнє замовлення без рядків (`InvalidOperationException`).
+- **Абстракція (контракт):** `IOrderStore` (`src/Core/Abstractions/IOrderStore.cs`)
+  - Методи: `List()`, `GetById(string id)`, `Add(Order item)`, `Update(Order item)`, `bool Remove(string id)`.
+  - Повертає `IReadOnlyList<Order>`, щоб унеможливити мутацію сховища в обхід методів.
+
+- **Реалізації сховища:**
+  1. `InMemoryOrderStore` (`src/Core/Storage/InMemoryOrderStore.cs`) — збереження в оперативній пам'яті на базі `Dictionary<string, Order>`. Підтримує початкове заповнення (seed) через конструктор (з `SampleData.Orders()`).
+  2. `FileOrderStore` (`src/Core/Storage/FileOrderStore.cs`) — файлове збереження у форматі JSON (`data/orders.json`). Використовує кеш у пам'яті, дозавантаження при першому зверненні та запис на диск (`Flush`) після кожної зміни (`Add`, `Update`, `Remove`). Серіалізація відбувається через `OrderDto` з мапінгом `ToDto()` / `FromDto()`.
+
+- **Сервіс:** `OrderService` (`src/Core/Services/OrderService.cs`)
+  - Використовує ручне впровадження залежностей (Dependency Injection) через первинний конструктор: залежить виключно від інтерфейсу `IOrderStore`, а не від конкретних класів.
+  - Операції: `CreateOrder`, `AddLine`, `Confirm`, `All`, `Find`.
+
+- **Composition Root:** `src/Cli/Program.cs`
+  - Єдине місце вибору конкретної реалізації сховища за аргументом командного рядка:
+    - Без аргументів: `InMemoryOrderStore` (дані живуть лише під час виконання):
+      ```bash
+      dotnet run --project src/Cli
+      ```
+    - З прапорцем `--file`: `FileOrderStore` (дані накопичуються у `data/orders.json` між запусками):
+      ```bash
+      dotnet run --project src/Cli -- --file
+      ```
+  - Перехоплення винятків у блоках `try/catch` з виведенням зрозумілих повідомлень без stack trace.
+
+### Додаткові завдання (Лабораторна 5)
+
+1. **Декоратор `CachingOrderStore` (`src/Core/Storage/CachingOrderStore.cs`):**
+   - Реалізує патерн Декоратор: приймає інший `IOrderStore` у конструкторі, реалізує той самий інтерфейс `IOrderStore`, додаючи прозоре кешування сутностей у пам'яті для оптимізації повторних запитів.
+
+2. **Пошук за предикатом `Func<Order, bool>`:**
+   - В інтерфейс `IOrderStore`, усі реалізації сховищ та `OrderService` додано метод `Find(Func<Order, bool> predicate)`.
+   - Дозволяє виконувати гнучкі вибірки (наприклад, `o => o.Status == OrderStatus.Confirmed && o.Total > 3000m`), що є підготовкою до LINQ-запитів 6–7 тижнів.
+
+3. **Фабрика `StoreFactory` (`src/Core/Storage/StoreFactory.cs`):**
+   - Метод `StoreFactory.Create(args)` інкапсулює логіку вибору та конфігурації сховища на основі прапорців `--file` та `--cached`.
+   - **Порівняння:**
+     - *«Усе в Program.cs»:* простіше для крихітних застосунків, не потребує додаткових класів при одному простому if/тернарному операторі.
+     - *«StoreFactory»:* виносить логіку вибору сховища в окремий модуль, спрощує Composition Root у `Program.cs`, легко покривається модульними тестами та масштабується у разі появи нових параметрів конфігурації (наприклад, `--cached`).

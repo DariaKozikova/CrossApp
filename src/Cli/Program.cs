@@ -1,43 +1,62 @@
-﻿using Core.Domain;
-using Core.Dto;
+using Core.Abstractions;
+using Core.Domain;
+using Core.Services;
+using Core.Storage;
 
-Console.WriteLine("=== Сценарій 1: успіх ===");
-Order order = Order.Create("ORD-001", "CUST-99");
-order.AddLine("P-1", "Ноутбук", 25000m, 1);
-order.AddLine("P-2", "Миша", 500m, 2);
-Console.WriteLine(order);
-order.Confirm();
-Console.WriteLine(order);
+// Composition Root через StoreFactory (Додаткове завдання 3)
+IOrderStore store = StoreFactory.Create(args);
+var service = new OrderService(store);
 
-Console.WriteLine("\n=== Сценарій 2: порушення інваріантів ===");
-Order draft = Order.Create("ORD-002", "CUST-99");
-TryDo("порожній ID замовлення", () => Order.Create(" ", "CUST-99"));
-TryDo("від'ємна кількість", () => draft.AddLine("P-3", "Клавіатура", 1000m, -5));
-TryDo("рядок до підтвердженого замовлення", () => order.AddLine("P-3", "Клавіатура", 1000m, 1));
-TryDo("підтвердження порожнього замовлення", () => draft.Confirm());
-Console.WriteLine($" Стан після відмов: {draft}");
+Console.WriteLine($"Сховище: {store.GetType().Name}");
 
-Console.WriteLine("\n=== Додаткові завдання ===");
-Order cancelled = Order.Create("ORD-003", "CUST-99");
-cancelled.Cancel();
-TryDo("повторне скасування (enum + switch)", () => cancelled.Cancel());
+// Сценарій: створення, додавання позиції, зміна стану (Confirm)
+var created = service.CreateOrder("CUST-99");
+service.AddLine(created.Id, "P-101", "Кабель UTP cat6", 25m, 10);
+service.AddLine(created.Id, "P-102", "Конектор RJ-45", 5m, 20);
+service.Confirm(created.Id);
 
-Customer customer = Customer.Create("C-1", "Іван");
-var open = Enumerable.Range(1, 5).Select(i => Order.Create($"O-{i}", "C-1")).ToList();
-TryDo("ліміт відкритих замовлень (сервіс)", () => new OrderService().CreateOrder(customer, open, "O-NEW"));
+// Показати список усіх замовлень
+Console.WriteLine("\n=== Список усіх замовлень ===");
+foreach (var o in service.All())
+{
+    Console.WriteLine($" {o.Id,-10} {o.CustomerId,-10} {o.Status,-11} Рядків: {o.Lines.Count,2} Сума: {o.Total,8:F2} грн");
+}
 
-var badDto = new OrderDto("ORD-BAD", "CUST-99", [new OrderLineDto("P-1", "Товар", 10m, -3)], "Draft");
-var mapped = DomainMapper.MapOrders(new ImportResult<OrderDto>([order.ToDto(), badDto], []));
-Console.WriteLine($" Імпорт: коректних {mapped.Items.Count}, помилок {mapped.Errors.Count}");
-foreach (var error in mapped.Errors)
-    Console.WriteLine($"   - {error}");
+// Знайти за точним ID
+Console.WriteLine("\n=== Пошук за ID ===");
+var found = service.Find(created.Id);
+if (found != null)
+{
+    Console.WriteLine($"Знайдено: {found}");
+}
+
+// Додаткове завдання 2: Пошук за предикатом Func<Order, bool>
+Console.WriteLine("\n=== Додаткове завдання 2: Пошук за Func<Order, bool> ===");
+Console.WriteLine("Всі підтверджені замовлення із сумою > 3000 грн:");
+var filtered = service.Find(o => o.Status == OrderStatus.Confirmed && o.Total > 3000m);
+foreach (var o in filtered)
+{
+    Console.WriteLine($" [Знайдено] {o.Id} — Клієнт: {o.CustomerId}, Сума: {o.Total:F2} грн");
+}
+
+// Додаткове завдання 1: Демонстрація декоратора CachingOrderStore
+Console.WriteLine("\n=== Додаткове завдання 1: Декоратор CachingOrderStore ===");
+var cachingStore = new CachingOrderStore(store);
+var cachingService = new OrderService(cachingStore);
+var cachedOrder = cachingService.Find(created.Id);
+Console.WriteLine($"Знайдено через декоратор: {cachedOrder?.Id} (тип обгортки: {cachingStore.GetType().Name})");
+
+// Сценарії відмови (try/catch без stack trace)
+Console.WriteLine("\n=== Сценарії відмови ===");
+TryDo("операція з неіснуючим id", () => service.AddLine("NON-EXISTENT-ID", "P-99", "Тестовий товар", 100m, 1));
+TryDo("додавання дубліката id у сховище", () => store.Add(created));
 
 static void TryDo(string title, Action action)
 {
     try
     {
         action();
-        Console.WriteLine($" {title}: виняток НЕ спрацював — інваріант відсутній!");
+        Console.WriteLine($" {title}: виняток НЕ спрацював!");
     }
     catch (Exception ex)
     {
