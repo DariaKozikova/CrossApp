@@ -1,10 +1,22 @@
 namespace Core.Services;
+
 using Core.Abstractions;
 using Core.Domain;
+using Core.Events;
 
-public sealed class OrderService(IOrderStore store)
+public sealed class OrderService(IOrderStore store, INotificationSink? sink = null)
 {
     private readonly IOrderStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly INotificationSink? _sink = sink;
+
+    public event EventHandler<OrderChangedEventArgs>? Changed;
+
+    private void OnChanged(Order order, OrderChangeKind kind)
+    {
+        var args = new OrderChangedEventArgs(order.Id, kind, order.Lines.Count, order.Total);
+        Changed?.Invoke(this, args);
+        _sink?.Notify(args);
+    }
 
     public Order CreateOrder(string customerId, string? id = null)
     {
@@ -26,6 +38,7 @@ public sealed class OrderService(IOrderStore store)
 
         var order = Order.Create(orderId, customerId);
         _store.Add(order);
+        OnChanged(order, OrderChangeKind.OrderCreated);
         return order;
     }
 
@@ -35,6 +48,7 @@ public sealed class OrderService(IOrderStore store)
             ?? throw new InvalidOperationException($"Немає запису з id={orderId}.");
         order.AddLine(productId, name, price, quantity);
         _store.Update(order);
+        OnChanged(order, OrderChangeKind.LineAdded);
     }
 
     public void Confirm(string orderId)
@@ -43,6 +57,16 @@ public sealed class OrderService(IOrderStore store)
             ?? throw new InvalidOperationException($"Немає запису з id={orderId}.");
         order.Confirm();
         _store.Update(order);
+        OnChanged(order, OrderChangeKind.OrderConfirmed);
+    }
+
+    public void Cancel(string orderId)
+    {
+        var order = _store.GetById(orderId)
+            ?? throw new InvalidOperationException($"Немає запису з id={orderId}.");
+        order.Cancel();
+        _store.Update(order);
+        OnChanged(order, OrderChangeKind.OrderCancelled);
     }
 
     public IReadOnlyList<Order> All() => _store.List();
@@ -53,5 +77,11 @@ public sealed class OrderService(IOrderStore store)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         return _store.Find(predicate);
+    }
+
+    public IReadOnlyList<Order> FindAll(Func<Order, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        return _store.List().Where(predicate).ToList();
     }
 }
