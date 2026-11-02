@@ -1,126 +1,98 @@
-using Cli.Sinks;
 using Core;
-using Core.Abstractions;
 using Core.Domain;
-using Core.Events;
-using Core.Import;
+using Core.Reports;
 using Core.Services;
 using Core.Storage;
+using Cli;
 
-bool useFile = args.Contains("--file");
-string dataPath = Path.Combine(AppContext.BaseDirectory, "data", "orders.json");
-
-IOrderStore store = useFile
-    ? new FileOrderStore(dataPath)
-    : new InMemoryOrderStore(SampleData.Orders());
-
-if (args.Contains("--cached"))
-{
-    store = new CachingOrderStore(store);
-}
+var store = StoreFactory.Create(args);
 
 var service = new OrderService(store);
+var items = service.All();
+
 Console.WriteLine($"Сховище: {store.GetType().Name}\n");
 
-var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
-Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-if (File.Exists(logPath))
+Console.WriteLine("=== Демонстрація відкладеного виконання ===");
+var source = service.All().ToList();
+var query = ReportService.DeferredFilter(source, 1000m);
+Console.WriteLine($"Малих замовлень (< 1000 грн) до змін: {query.Count()}");
+
+var tempOrder = Order.Create("ORD-TMP", "CUST-TMP");
+tempOrder.AddLine("P-TMP", "Кабель USB", 200m, 1);
+source.Add(tempOrder);
+
+Console.WriteLine($"Малих замовлень після змін: {query.Count()}");
+var snapshot = query.ToList();
+source.Clear();
+Console.WriteLine($"У знімку лишилось: {snapshot.Count}\n");
+
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
+switch (command)
 {
-    File.Delete(logPath);
+    case "report-top":
+        Console.WriteLine("=== Звіт: Топ-5 замовлень за сумою ===");
+        Print(ReportService.TopOrders(items, 5));
+        Console.WriteLine("\n=== Звіт: Топ-5 клієнтів за сумою ===");
+        PrintCustomers(ReportService.TopCustomers(items, 5));
+        break;
+
+    case "report-low":
+        Console.WriteLine("=== Звіт: Замовлення до 1000 грн (невеликі чеки) ===");
+        Print(ReportService.LowTotal(items, 1000m));
+        break;
+
+    case "report-expensive":
+        Console.WriteLine("=== Звіт: Замовлення дорожче 3000 грн ===");
+        Print(ReportService.ExpensiveOrders(items, 3000m));
+        break;
+
+    case "report-groups":
+        Console.WriteLine("=== Звіт: Розподіл замовлень за статусом ===");
+        foreach (var g in ReportService.ByStatus(items))
+        {
+            Console.WriteLine($" {g.Key,-11} замовлень: {g.Count,2}  сумарно: {g.TotalAmount,10:F2} грн");
+        }
+        break;
+
+    case "report-sum":
+        Console.WriteLine("=== Звіт: Підсумкові показники ===");
+        var t = ReportService.Totals(items);
+        Console.WriteLine($" позицій {t.Items}, всього {t.Total:F2} грн, середнє {t.Average:F2} грн, макс {t.Max:F2} грн");
+        break;
+
+    case "report-customers":
+        Console.WriteLine("=== Звіт: Клієнти та їхні замовлення (GroupJoin) ===");
+        foreach (var c in ReportService.CustomerOrders(SampleData.Customers(), items))
+            Console.WriteLine($" {c.CustomerId,-10} {c.FullName,-22} замовлень: {c.OrdersCount,2}  сума: {c.TotalAmount,10:F2} грн");
+        break;
+
+    case "report-groups-query":
+        Console.WriteLine("=== Звіт: Статуси через синтаксис запитів ===");
+        foreach (var g in ReportService.ByStatusQuery(items))
+            Console.WriteLine($" {g.Key,-11} замовлень: {g.Count,2}  сумарно: {g.TotalAmount,10:F2} грн");
+        break;
+
+    case "report-benchmark":
+        ReportBenchmark.Run();
+        break;
+
+    default:
+        Console.WriteLine("report-top | report-low | report-expensive | report-groups | report-sum | report-customers | report-groups-query | report-benchmark");
+        break;
 }
 
-var projectLogDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "logs"));
-var projectLogPath = Path.Combine(projectLogDir, "app.log");
-try
+static void Print(IReadOnlyList<OrderReportLine> lines)
 {
-    Directory.CreateDirectory(projectLogDir);
-    if (File.Exists(projectLogPath)) File.Delete(projectLogPath);
-}
-catch { }
-
-void OnOrderChanged(object? sender, OrderChangedEventArgs e)
-{
-    var line = $"{e.At:HH:mm:ss} {e.Kind,-14} {e.OrderId} Рядків: {e.LinesCount,2} → Сума: {e.Total,8:F2} грн";
-    Console.WriteLine(line);
-
-    try
+    foreach (var l in lines)
     {
-        File.AppendAllText(logPath, line + Environment.NewLine);
-        File.AppendAllText(projectLogPath, line + Environment.NewLine);
+        Console.WriteLine($" {l.OrderId,-10} {l.CustomerId,-10} {l.Status,-11} Рядків: {l.LinesCount,2}  Сума: {l.Total,8:F2} грн");
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Логер] Помилка запису у файл: {ex.Message}");
-    }
 }
 
-service.Changed += OnOrderChanged;
-
-int changes = 0;
-service.Changed += (_, _) => changes++;
-
-Console.WriteLine("=== Сценарій сповіщень про зміни ===");
-var created = service.CreateOrder("CUST-99");
-service.AddLine(created.Id, "P-101", "Кабель UTP cat6", 25m, 10);
-Console.WriteLine($"Подій отримано: {changes}");
-
-service.Changed -= OnOrderChanged;
-
-service.AddLine(created.Id, "P-102", "Конектор RJ-45", 5m, 20);
-Console.WriteLine($"Подій отримано: {changes}");
-
-Console.WriteLine("\n=== Сценарії відмови (подія НЕ повинна виникати) ===");
-int changesBefore = changes;
-
-TryDo("додавання товару з від'ємною кількістю (-5)", () =>
-    service.AddLine(created.Id, "P-999", "Помилковий товар", 100m, -5));
-
-TryDo("операція над неіснуючим замовленням", () =>
-    service.AddLine("NON-EXISTENT-ID", "P-999", "Помилковий товар", 100m, 1));
-
-Console.WriteLine($"Зміна лічильника подій після збоїв: {changes - changesBefore} (жодної події не виникло!)");
-
-service.Confirm(created.Id);
-
-Console.WriteLine("\n=== Делегат Func<Order, bool> замість події (отримання вибірки) ===");
-var filteredOrders = service.FindAll(o => o.Total > 200m);
-Console.WriteLine($"Знайдено замовлень на суму > 200 грн: {filteredOrders.Count}");
-foreach (var o in filteredOrders.Take(5))
+static void PrintCustomers(IReadOnlyList<CustomerSummary> customers)
 {
-    Console.WriteLine($"  {o.Id,-10} {o.CustomerId,-10} {o.Status,-11} Рядків: {o.Lines.Count,2} Сума: {o.Total,8:F2} грн");
-}
-
-Console.WriteLine("\n=== Додаткове завдання 1: INotificationSink через ручний DI ===");
-var consoleSink = new ConsoleSink();
-var sinkService = new OrderService(store, consoleSink);
-var sinkOrder = sinkService.CreateOrder("CUST-SINK");
-sinkService.AddLine(sinkOrder.Id, "P-SINK", "Тестовий товар для ConsoleSink", 150m, 2);
-
-var sinkLogPath = Path.Combine(AppContext.BaseDirectory, "logs", "sink.log");
-var fileSink = new FileSink(sinkLogPath);
-var fileSinkService = new OrderService(store, fileSink);
-var fileSinkOrder = fileSinkService.CreateOrder("CUST-FILESINK");
-fileSinkService.AddLine(fileSinkOrder.Id, "P-FILESINK", "Тестовий товар для FileSink", 200m, 1);
-Console.WriteLine($"[FileSink] Подію успішно записано у файл: logs/sink.log");
-
-Console.WriteLine("\n=== Додаткове завдання 2: Action<string> при імпорті для звіту про рядки ===");
-string sampleCsv = Path.Combine(AppContext.BaseDirectory, "data", "sample.csv");
-if (File.Exists(sampleCsv))
-{
-    var importResult = ProductCsvImporter.Load(sampleCsv, onSkipped: msg =>
-        Console.WriteLine($"  [Звіт імпорту] {msg}"));
-    Console.WriteLine($"  Підсумок: успішно прочитано {importResult.Items.Count} товарів, з помилками {importResult.Errors.Count}");
-}
-
-static void TryDo(string title, Action action)
-{
-    try
+    foreach (var c in customers)
     {
-        action();
-        Console.WriteLine($" {title}: виняток НЕ спрацював!");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($" {title}: {ex.GetType().Name} — {ex.Message}");
+        Console.WriteLine($" Клієнт: {c.CustomerId,-10}  Замовлень: {c.OrdersCount,2}  Сума замовлень: {c.TotalSpent,9:F2} грн");
     }
 }

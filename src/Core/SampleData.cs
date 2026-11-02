@@ -4,6 +4,34 @@ using Core.Domain;
 
 public static class SampleData
 {
+    public static IReadOnlyList<Customer> Customers() =>
+    [
+        Customer.Create("CUST-01", "Іван Петренко"),
+        Customer.Create("CUST-02", "Марія Коваль"),
+        Customer.Create("CUST-03", "Олег Бондар"),
+        Customer.Create("CUST-04", "Анна Мельник"),
+        Customer.Create("CUST-05", "Дмитро Шевченко"),
+        Customer.Create("CUST-06", "Олена Ткачук"),
+        Customer.Create("CUST-07", "Андрій Кравченко"),
+        Customer.Create("CUST-08", "Наталія Савчук"),
+        Customer.Create("CUST-09", "Максим Романюк"),
+        Customer.Create("CUST-10", "Софія Мороз"),
+        Customer.Create("CUST-11", "Віктор Поліщук")
+    ];
+
+    public static IReadOnlyList<Order> GenerateOrders(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        return Enumerable.Range(0, count).Select(i =>
+        {
+            var order = Order.Create($"BENCH-{i:D6}", $"CUST-{i % 1000:D4}");
+            order.AddLine("P-BENCH", "Тестовий товар", 100m + i % 10000, 1 + i % 5);
+            if (i % 3 == 1) order.Confirm();
+            if (i % 3 == 2) order.Cancel();
+            return order;
+        }).ToList();
+    }
+
     public static IReadOnlyList<Order> Orders()
     {
         var list = new List<Order>();
@@ -30,7 +58,7 @@ public static class SampleData
         list.Add(o4);
 
         var o5 = Order.Create("ORD-005", "CUST-01");
-        o5.AddLine("P-07", "Кабель HDMI 2.1", 350m, 3);
+        o5.AddLine("P-07", "Кабель HDMI 2.1", 350m, 1);
         list.Add(o5);
 
         var o6 = Order.Create("ORD-006", "CUST-05");
@@ -84,6 +112,25 @@ public static class SampleData
         var o16 = Order.Create("ORD-016", "CUST-06");
         o16.AddLine("P-19", "Мікрофон USB", 2300m, 1);
         list.Add(o16);
+
+        var o17 = Order.Create("ORD-017", "CUST-01");
+        o17.AddLine("P-20", "Флешка USB 32GB", 180m, 2);
+        list.Add(o17);
+
+        var o18 = Order.Create("ORD-018", "CUST-07");
+        o18.AddLine("P-21", "Батарейка AA (4 шт)", 120m, 3);
+        o18.Cancel();
+        list.Add(o18);
+
+        var o19 = Order.Create("ORD-019", "CUST-08");
+        o19.AddLine("P-22", "Перехідник Type-C -> USB", 220m, 2);
+        o19.Cancel();
+        list.Add(o19);
+
+        var o20 = Order.Create("ORD-020", "CUST-09");
+        o20.AddLine("P-23", "Чохол для планшета", 480m, 1);
+        o20.Cancel();
+        list.Add(o20);
 
         return list;
     }
