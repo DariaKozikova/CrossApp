@@ -15,7 +15,7 @@ public static class DomainMapper
             {
                 valid.Add(Order.FromDto(dto));
             }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException or DomainException)
             {
                 errors.Add($"Замовлення {dto.Id}: {ex.Message.Split('\n')[0].TrimEnd()}");
             }

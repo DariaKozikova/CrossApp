@@ -34,7 +34,7 @@ public sealed class Order
     public void AddLine(string productId, string name, decimal price, int quantity)
     {
         if (Status != OrderStatus.Draft)
-            throw new InvalidOperationException(
+            throw new DomainException(
                 $"Замовлення {Id} має статус {Status}, рядки можна додавати лише в стані Draft");
 
         var line = OrderLine.Create(productId, name, price, quantity);
@@ -46,13 +46,13 @@ public sealed class Order
         var next = Status switch
         {
             OrderStatus.Draft => OrderStatus.Confirmed,
-            OrderStatus.Confirmed => throw new InvalidOperationException($"Замовлення {Id} вже підтверджено"),
-            OrderStatus.Cancelled => throw new InvalidOperationException($"Не можна підтвердити скасоване замовлення {Id}"),
-            _ => throw new InvalidOperationException($"Замовлення {Id} має невідомий стан {Status}")
+            OrderStatus.Confirmed => throw new DomainException($"Замовлення {Id} вже підтверджено"),
+            OrderStatus.Cancelled => throw new DomainException($"Не можна підтвердити скасоване замовлення {Id}"),
+            _ => throw new DomainException($"Замовлення {Id} має невідомий стан {Status}")
         };
 
         if (_lines.Count == 0)
-            throw new InvalidOperationException($"Неможливо підтвердити порожнє замовлення {Id}");
+            throw new DomainException($"Неможливо підтвердити порожнє замовлення {Id}");
 
         Status = next;
     }
@@ -62,9 +62,9 @@ public sealed class Order
         var next = Status switch
         {
             OrderStatus.Draft => OrderStatus.Cancelled,
-            OrderStatus.Confirmed => throw new InvalidOperationException($"Замовлення {Id} вже підтверджено, скасування неможливе"),
-            OrderStatus.Cancelled => throw new InvalidOperationException($"Замовлення {Id} вже скасоване"),
-            _ => throw new InvalidOperationException($"Замовлення {Id} має невідомий стан {Status}")
+            OrderStatus.Confirmed => throw new DomainException($"Замовлення {Id} вже підтверджено, скасування неможливе"),
+            OrderStatus.Cancelled => throw new DomainException($"Замовлення {Id} вже скасоване"),
+            _ => throw new DomainException($"Замовлення {Id} має невідомий стан {Status}")
         };
 
         Status = next;
@@ -85,7 +85,12 @@ public sealed class Order
         var order = Create(dto.Id, dto.CustomerId);
 
         foreach (var lineDto in dto.Lines ?? [])
+        {
+            if (lineDto is null)
+                throw new ArgumentException("Порожній рядок замовлення.", nameof(dto));
+
             order.AddLine(lineDto.ProductId, lineDto.Name, lineDto.Price, lineDto.Quantity);
+        }
 
         switch (status)
         {

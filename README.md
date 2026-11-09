@@ -369,3 +369,74 @@ SampleData.GenerateOrders(100_000) створює відтворювані за�
 | З проміжним ToList | 52,095 | 87290 |
 
 У цьому запуску час майже однаковий: різниця близько 0,3%, тож висновок про прискорення робити не можна. Проміжний ToList створює додатковий список посилань на відібрані замовлення, але не скорочує сортування чи обчислення звіту. Повторний запуск може дати інші числа через JIT, GC і навантаження системи; без повторного використання проміжного результату цей список тут не потрібен.
+
+## Лабораторна 8: async/await, скасування, доменні винятки, unit-тести Core
+
+### 1. Нові компоненти та асинхронність
+- **`DomainException` (`src/Core/DomainException.cs`):** доменний виняток для порушення бізнес-правил (наприклад, спроба повторно підтвердити замовлення, підтвердити порожнє замовлення або перевищення ліміту відкритих замовлень). Перевірки вхідних аргументів лишаються `ArgumentException` та `ArgumentOutOfRangeException`.
+- **`IOrderImporter` (`src/Core/Abstractions/`):** асинхронний контракт для читання замовлень `Task<IReadOnlyList<Order>> LoadAsync(string path, CancellationToken ct = default)`.
+- **`JsonOrderImporter` (`src/Core/Storage/`):** справжнє неблокувальне асинхронне читання за допомогою `FileStream(..., useAsync: true)` та `JsonSerializer.DeserializeAsync(stream, cancellationToken: ct)` без використання псевдоасинхронного `Task.Run`. Підтримує перевірку `CancellationToken` перед читанням і на кожній ітерації розбору.
+- **`OrderService.ImportAsync` (`src/Core/Services/OrderService.cs`):** асинхронний метод імпорту з підтримкою `CancellationToken`. Гарантує ідемпотентність (пропускає замовлення, які вже є в сховищі) та піднімає подію `Changed` для кожного доданого замовлення.
+- **`Program.cs` (`src/Cli/Program.cs`):** підтримує top-level `await`, перехоплення комбінації `Ctrl+C` через `Console.CancelKeyPress` та роздільну обробку `OperationCanceledException` (стоїть першим), `DomainException` та `FileNotFoundException`.
+
+### 2. Запуск тестів та перевірка скасування
+
+#### Запуск модульних тестів:
+```bash
+dotnet test
+```
+Усі 18 тестових випадків проєкту `tests/Core.Tests` проходять успішно (інваріанти, перевірка події, звіти, скасування, імпорт із тимчасових файлів).
+
+#### Запуск імпорту файлу:
+```bash
+dotnet run --project src/Cli -- --file
+```
+Вивід: `Імпортовано записів: 19`
+
+#### Перевірка сценарію скасування (CancellationToken / Ctrl+C):
+```bash
+dotnet run --project src/Cli -- --file --timeout
+```
+Вивід: `Імпорт скасовано.` (застосунок коректно перехоплює `OperationCanceledException` без аварійного завершення та без виведення стектрейсу).
+
+#### Перевірка обробки доменної помилки в пошкодженому файлі:
+```bash
+dotnet run --project src/Cli -- data/sample_invalid.json
+```
+Вивід: `Дані відхилено: Запис 1: Ідентифікатор замовлення обов'язковий (Parameter 'id')`
+
+### 3. Додаткові завдання (Лабораторна 8)
+
+1. **Потоковий імпорт через `IAsyncEnumerable<Order>` та `await foreach`:**
+   - У `IOrderImporter` та `JsonOrderImporter` реалізовано метод `ReadAllAsync`. Атрибут `[EnumeratorCancellation]` стоїть на параметрі токена в реалізації.
+   - Застосовано `JsonSerializer.DeserializeAsyncEnumerable<OrderDto>` для неблокувального читання великих JSON-масивів без завантаження всього списку в оперативну пам'ять одразу.
+   - У `OrderService` додано `ImportStreamAsync`, який обходить елементи через `await foreach`.
+   - Перевірка через CLI:
+     ```bash
+     dotnet run --project src/Cli -- --stream
+     ```
+     Вивід: `Імпортовано через потік (IAsyncEnumerable): 19`
+
+2. **Зв'язані токени (`CreateLinkedTokenSource`) та доведення спрацювання таймауту:**
+   - У CLI додано демонстрацію `--linked-timeout`:
+     ```bash
+     dotnet run --project src/Cli -- --linked-timeout
+     ```
+   - У `ImportTests.cs` реалізовано unit-тест `ImportAsync_WithLinkedToken_ProvesTimeoutTriggered`, який запускає таймер під час очікування в імпортері та перевіряє джерело скасування:
+     - `timeoutCts.IsCancellationRequested == true`
+     - `userCts.IsCancellationRequested == false`
+     - `linkedCts.IsCancellationRequested == true`
+
+3. **`IProgress<int>` для звіту про хід імпорту (відсотки):**
+   - У методи `ImportAsync` та `ImportStreamAsync` додано параметр `IProgress<int>? progress = null`.
+   - Пакетний імпорт знає загальну кількість і показує відсоток. Потоковий імпорт показує кількість прочитаних записів, бо загальна кількість наперед невідома.
+   - У `Program.cs` підписник `IProgress<int>` оновлює рядок у реальному часі: `\r[Хід імпорту:  XX%]`.
+   - Реалізовано тест `ImportAsync_ReportsProgressToSubscriber`.
+
+4. **Звіт про тестове покриття (`XPlat Code Coverage`):**
+   - Команда запуску збору покриття:
+     ```bash
+     dotnet test tests/Core.Tests/Core.Tests.csproj --collect:"XPlat Code Coverage"
+     ```
+   - **Фактичне покриття Core у Release:** 30,19% рядків (199 із 659) і 26,45% гілок (59 із 223).
+   - Тести охоплюють сценарії замовлень, події, LINQ-звіти й асинхронний імпорт. Допоміжні компоненти попередніх робіт, зокрема синхронні імпортери, файлове сховище та інформація про середовище, залишаються поза перевірками цієї лабораторної. Методичка не встановлює мінімального відсотка покриття.
